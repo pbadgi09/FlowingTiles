@@ -12,9 +12,11 @@ public struct FlowingBrowser<Empty: View>: View {
     private let gridItems: [MediaGridModel]
     private let headerTitle: String
     private let accent: Color
+    private let fonts: FlowingFonts
     private let tileThumbnail: FlowingThumbnailProvider
     private let gridThumbnail: FlowingThumbnailProvider
     private let preview: FlowingPreviewProvider
+    private let sizeProvider: FlowingSizeProvider?
     private let onGridTap: (MediaGridModel) -> Void
     private let onSelectionChange: (String?) -> Void
     private let emptyState: () -> Empty
@@ -25,9 +27,11 @@ public struct FlowingBrowser<Empty: View>: View {
         gridItems: [MediaGridModel],
         headerTitle: String,
         accent: Color,
+        fonts: FlowingFonts = .init(),
         tileThumbnail: @escaping FlowingThumbnailProvider,
         gridThumbnail: @escaping FlowingThumbnailProvider,
         preview: @escaping FlowingPreviewProvider,
+        sizeProvider: FlowingSizeProvider? = nil,
         onGridTap: @escaping (MediaGridModel) -> Void,
         onSelectionChange: @escaping (String?) -> Void = { _ in },
         @ViewBuilder emptyState: @escaping () -> Empty
@@ -37,9 +41,11 @@ public struct FlowingBrowser<Empty: View>: View {
         self.gridItems = gridItems
         self.headerTitle = headerTitle
         self.accent = accent
+        self.fonts = fonts
         self.tileThumbnail = tileThumbnail
         self.gridThumbnail = gridThumbnail
         self.preview = preview
+        self.sizeProvider = sizeProvider
         self.onGridTap = onGridTap
         self.onSelectionChange = onSelectionChange
         self.emptyState = emptyState
@@ -53,8 +59,10 @@ public struct FlowingBrowser<Empty: View>: View {
                 if isExpanded {
                     MediaThumbGrid(
                         items: gridItems,
+                        fonts: fonts,
                         thumbnail: gridThumbnail,
                         preview: preview,
+                        sizeProvider: sizeProvider,
                         onTap: onGridTap
                     )
                     .transition(.opacity)
@@ -73,7 +81,7 @@ public struct FlowingBrowser<Empty: View>: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(headerTitle)
-                .font(.system(size: isExpanded ? 60 : 88, weight: .black, design: .rounded))
+                .font(fonts.title(size: isExpanded ? 60 : 88))
                 .foregroundStyle(.primary.opacity(0.1))
                 .lineLimit(2)
                 .minimumScaleFactor(0.4)
@@ -85,6 +93,7 @@ public struct FlowingBrowser<Empty: View>: View {
                 selectedID: $selectedID,
                 isExpanded: isExpanded,
                 accent: accent,
+                fonts: fonts,
                 thumbnail: tileThumbnail,
                 onTap: toggle
             )

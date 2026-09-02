@@ -2,7 +2,8 @@ import SwiftUI
 import AVFoundation
 
 /// A 3-column grid of square media thumbnails. Each cell shows a duration and
-/// file-size overlay and plays a muted, looping preview while pressed-and-held.
+/// (lazily-loaded) file-size badge, and plays a muted, looping preview while
+/// pressed-and-held.
 ///
 /// Cell size is computed from the measured grid width and applied as a fixed
 /// square frame. This is deliberate: a per-cell `GeometryReader { }.aspectRatio()`
@@ -10,11 +11,13 @@ import AVFoundation
 /// grid invisible and unscrollable), so we size cells deterministically instead.
 public struct MediaThumbGrid: View {
     private let items: [MediaGridModel]
+    private let fonts: FlowingFonts
     private let thumbnail: FlowingThumbnailProvider
     private let preview: FlowingPreviewProvider
+    private let sizeProvider: FlowingSizeProvider?
     private let onTap: (MediaGridModel) -> Void
 
-    private static let spacing: CGFloat = 2
+    private static let spacing: CGFloat = 3
     private static let columnCount = 3
 
     private let columns = Array(
@@ -26,26 +29,33 @@ public struct MediaThumbGrid: View {
 
     public init(
         items: [MediaGridModel],
+        fonts: FlowingFonts = .init(),
         thumbnail: @escaping FlowingThumbnailProvider,
         preview: @escaping FlowingPreviewProvider,
+        sizeProvider: FlowingSizeProvider? = nil,
         onTap: @escaping (MediaGridModel) -> Void
     ) {
         self.items = items
+        self.fonts = fonts
         self.thumbnail = thumbnail
         self.preview = preview
+        self.sizeProvider = sizeProvider
         self.onTap = onTap
     }
 
     public var body: some View {
         LazyVGrid(columns: columns, spacing: Self.spacing) {
-            ForEach(items) { item in
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                 MediaThumbCell(
                     item: item,
                     side: cellSide,
+                    fonts: fonts,
                     thumbnail: thumbnail,
                     preview: preview,
+                    sizeProvider: sizeProvider,
                     onTap: { onTap(item) }
                 )
+                .accessibilityIdentifier("videoCell_\(index)")
             }
         }
         .padding(.horizontal, Self.spacing)
@@ -70,17 +80,27 @@ private struct GridWidthKey: PreferenceKey {
 }
 
 private struct MediaThumbCell: View {
+    // Closures are stored as plain (non-Sendable) function types — they're only
+    // ever invoked from this view's own `.task`/gesture handlers, so Sendability
+    // isn't needed and this avoids spurious data-race warnings at the call site.
     let item: MediaGridModel
     let side: CGFloat
-    let thumbnail: FlowingThumbnailProvider
-    let preview: FlowingPreviewProvider
+    let fonts: FlowingFonts
+    let thumbnail: (String, CGSize) async -> UIImage?
+    let preview: @MainActor (String) async -> AVPlayer?
+    let sizeProvider: ((String) async -> String?)?
     let onTap: () -> Void
 
     @State private var image: UIImage?
+    @State private var sizeText: String?
     @State private var player: AVPlayer?
     @State private var isPreviewing = false
     @State private var isHolding = false
+    @State private var holdTask: Task<Void, Never>?
     @State private var endObserver: NSObjectProtocol?
+
+    private static let holdDelay: Duration = .milliseconds(180)
+    private static let cornerRadius: CGFloat = 8
 
     var body: some View {
         ZStack {
@@ -94,57 +114,68 @@ private struct MediaThumbCell: View {
                 PlayerLayerView(player: player)
                     .transition(.opacity)
             }
-
-            overlays
-                .opacity(isPreviewing ? 0 : 1)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: side)
-        .clipped()
+        .frame(width: side, height: side)
+        .overlay(alignment: .bottomLeading) {
+            durationBadge.opacity(isPreviewing ? 0 : 1)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            sizeBadge.opacity(isPreviewing ? 0 : 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius))
         .contentShape(Rectangle())
-        .task(id: item.id) { await loadThumbnail() }
-        .onTapGesture { onTap() }
-        .gesture(holdGesture)
-        .onDisappear { endHold() }
-    }
-
-    private var overlays: some View {
-        VStack {
-            HStack {
-                Spacer()
-                Text(item.sizeText)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(.black.opacity(0.45), in: Capsule())
-            }
-            Spacer()
-            HStack {
-                Image(systemName: "video.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
-                Spacer()
-                Text(item.durationText)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white)
-            }
+        .task(id: item.id) {
+            async let thumb: Void = loadThumbnail()
+            async let size: Void = loadSize()
+            _ = await (thumb, size)
         }
-        .padding(6)
-        .shadow(color: .black.opacity(0.4), radius: 3, y: 1)
+        .onTapGesture { onTap() }
+        // Scroll-friendly press-and-hold: `onLongPressGesture` with a
+        // `maximumDistance` yields to the enclosing ScrollView as soon as the
+        // finger moves, so a normal vertical drag scrolls instead of being
+        // captured. Preview only starts after the finger stays put for
+        // `holdDelay`, so a quick scroll never flashes a preview.
+        .onLongPressGesture(minimumDuration: 3600, maximumDistance: 12) {
+            // Not used — the long press never "completes"; we drive start/stop
+            // from the pressing state below.
+        } onPressingChanged: { pressing in
+            if pressing { scheduleHold() } else { cancelHold() }
+        }
+        .onDisappear { cancelHold() }
     }
 
-    // Press-and-hold: begins after a short stationary press, ends on release.
-    // The long-press must complete before the drag activates, so a normal
-    // scroll drag (immediate movement) never triggers it and the ScrollView wins.
-    private var holdGesture: some Gesture {
-        LongPressGesture(minimumDuration: 0.2)
-            .sequenced(before: DragGesture(minimumDistance: 0))
-            .onChanged { value in
-                if case .second(true, _) = value { beginHold() }
-            }
-            .onEnded { _ in endHold() }
+    private var durationBadge: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "video.fill")
+                .font(.system(size: 9, weight: .bold))
+            Text(item.durationText)
+                .font(fonts.metadata(size: 10))
+                .lineLimit(1)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 3)
+        .background(.black.opacity(0.55), in: Capsule())
+        .padding(5)
+        .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
     }
+
+    @ViewBuilder
+    private var sizeBadge: some View {
+        if let sizeText {
+            Text(sizeText)
+                .font(fonts.metadata(size: 10))
+                .lineLimit(1)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 3)
+                .background(.black.opacity(0.55), in: Capsule())
+                .padding(5)
+                .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+        }
+    }
+
+    // MARK: - Loading
 
     private func loadThumbnail() async {
         let dimension = max(side, 150) * 2 // retina-crisp for the cell width
@@ -154,25 +185,47 @@ private struct MediaThumbCell: View {
         image = loaded
     }
 
-    private func beginHold() {
+    private func loadSize() async {
+        guard let sizeProvider else { return }
+        let text = await sizeProvider(item.id)
+        guard !Task.isCancelled else { return }
+        sizeText = text
+    }
+
+    // MARK: - Hold-to-play
+
+    private func scheduleHold() {
+        holdTask?.cancel()
+        holdTask = Task { @MainActor in
+            try? await Task.sleep(for: Self.holdDelay)
+            guard !Task.isCancelled else { return }
+            await beginHold()
+        }
+    }
+
+    private func cancelHold() {
+        holdTask?.cancel()
+        holdTask = nil
+        endHold()
+    }
+
+    private func beginHold() async {
         guard !isHolding else { return }
         isHolding = true
-        Task { @MainActor in
-            guard let p = await preview(item.id), isHolding else { return }
-            p.isMuted = true
-            p.actionAtItemEnd = .none
-            endObserver = NotificationCenter.default.addObserver(
-                forName: .AVPlayerItemDidPlayToEndTime,
-                object: p.currentItem,
-                queue: .main
-            ) { _ in
-                p.seek(to: .zero)
-                p.play()
-            }
-            player = p
-            withAnimation(.easeInOut(duration: 0.2)) { isPreviewing = true }
+        guard let p = await preview(item.id), isHolding else { return }
+        p.isMuted = true
+        p.actionAtItemEnd = .none
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: p.currentItem,
+            queue: .main
+        ) { _ in
+            p.seek(to: .zero)
             p.play()
         }
+        player = p
+        withAnimation(.easeInOut(duration: 0.2)) { isPreviewing = true }
+        p.play()
     }
 
     private func endHold() {

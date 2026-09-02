@@ -8,6 +8,7 @@ public struct FlowingTileStrip: View {
     @Binding private var selectedID: String?
     private let isExpanded: Bool
     private let accent: Color
+    private let fonts: FlowingFonts
     private let thumbnail: FlowingThumbnailProvider
     private let onTap: (String) -> Void
 
@@ -16,6 +17,7 @@ public struct FlowingTileStrip: View {
         selectedID: Binding<String?>,
         isExpanded: Bool,
         accent: Color,
+        fonts: FlowingFonts = .init(),
         thumbnail: @escaping FlowingThumbnailProvider,
         onTap: @escaping (String) -> Void
     ) {
@@ -23,6 +25,7 @@ public struct FlowingTileStrip: View {
         self._selectedID = selectedID
         self.isExpanded = isExpanded
         self.accent = accent
+        self.fonts = fonts
         self.thumbnail = thumbnail
         self.onTap = onTap
     }
@@ -40,6 +43,7 @@ public struct FlowingTileStrip: View {
                             isSelected: selectedID == tile.id,
                             isExpanded: isExpanded,
                             accent: accent,
+                            fonts: fonts,
                             thumbnail: thumbnail
                         )
                     }
@@ -62,7 +66,8 @@ struct FlowingTileView: View {
     let isSelected: Bool
     let isExpanded: Bool
     let accent: Color
-    let thumbnail: FlowingThumbnailProvider
+    let fonts: FlowingFonts
+    let thumbnail: (String, CGSize) async -> UIImage?
 
     private let angles:   [Double]  = [-8, -3,  3,  8, -5,  2, -2,  5]
     private let yOffsets: [CGFloat] = [ 12,  4, -4, 10,  6,  0,  8, -2]
@@ -119,7 +124,7 @@ struct FlowingTileView: View {
             }
 
             Text(tile.title)
-                .font(.headline)
+                .font(fonts.tileLabel(size: 17))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(14)
@@ -127,7 +132,7 @@ struct FlowingTileView: View {
         .frame(width: tileWidth, height: tileHeight)
         .overlay(alignment: .topLeading) {
             Text(tile.count.formatted())
-                .font(.caption)
+                .font(fonts.badge(size: 13))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)

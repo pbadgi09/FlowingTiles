@@ -23,15 +23,15 @@ public struct FlowingTileModel: Identifiable, Equatable, Hashable, Sendable {
 /// A single cell in the vertical media grid (e.g. a video).
 ///
 /// `id` is an opaque identifier resolved into a thumbnail image and, on
-/// press-and-hold, into an `AVPlayer` for inline preview.
+/// press-and-hold, into an `AVPlayer` for inline preview. The file-size label is
+/// loaded lazily per cell via a `FlowingSizeProvider` (it can be expensive), so
+/// it isn't part of the model.
 public struct MediaGridModel: Identifiable, Equatable, Hashable, Sendable {
     public let id: String
     public let durationText: String
-    public let sizeText: String
 
-    public init(id: String, durationText: String, sizeText: String) {
+    public init(id: String, durationText: String) {
         self.id = id
         self.durationText = durationText
-        self.sizeText = sizeText
     }
 }

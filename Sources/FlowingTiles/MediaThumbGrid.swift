@@ -51,32 +51,33 @@ private struct MediaThumbCell: View {
     @State private var endObserver: NSObjectProtocol?
 
     var body: some View {
-        GeometryReader { geo in
-            let side = geo.size.width
-            ZStack {
-                Rectangle().fill(Color.primary.opacity(0.08))
+        // Square cell: Color.clear takes the column width and aspectRatio forces
+        // a 1:1 box; content is layered in an overlay and clipped to that box.
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                ZStack {
+                    Rectangle().fill(Color.primary.opacity(0.08))
 
-                if let image {
-                    Image(uiImage: image).resizable().scaledToFill()
+                    if let image {
+                        Image(uiImage: image).resizable().scaledToFill()
+                    }
+
+                    if isPreviewing, let player {
+                        PlayerLayerView(player: player)
+                            .transition(.opacity)
+                    }
+
+                    overlays
+                        .opacity(isPreviewing ? 0 : 1)
                 }
-
-                if isPreviewing, let player {
-                    PlayerLayerView(player: player)
-                        .transition(.opacity)
-                }
-
-                overlays
-                    .opacity(isPreviewing ? 0 : 1)
             }
-            .frame(width: side, height: side)
             .clipped()
             .contentShape(Rectangle())
-        }
-        .aspectRatio(1, contentMode: .fit)
-        .task(id: item.id) { await loadThumbnail() }
-        .onTapGesture { onTap() }
-        .gesture(holdGesture)
-        .onDisappear { endHold() }
+            .task(id: item.id) { await loadThumbnail() }
+            .onTapGesture { onTap() }
+            .gesture(holdGesture)
+            .onDisappear { endHold() }
     }
 
     private var overlays: some View {

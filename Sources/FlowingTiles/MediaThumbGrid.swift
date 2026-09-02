@@ -3,13 +3,26 @@ import AVFoundation
 
 /// A 3-column grid of square media thumbnails. Each cell shows a duration and
 /// file-size overlay and plays a muted, looping preview while pressed-and-held.
+///
+/// Cell size is computed from the measured grid width and applied as a fixed
+/// square frame. This is deliberate: a per-cell `GeometryReader { }.aspectRatio()`
+/// can collapse to zero height when it's a direct `LazyVGrid` child (leaving the
+/// grid invisible and unscrollable), so we size cells deterministically instead.
 public struct MediaThumbGrid: View {
     private let items: [MediaGridModel]
     private let thumbnail: FlowingThumbnailProvider
     private let preview: FlowingPreviewProvider
     private let onTap: (MediaGridModel) -> Void
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
+    private static let spacing: CGFloat = 2
+    private static let columnCount = 3
+
+    private let columns = Array(
+        repeating: GridItem(.flexible(), spacing: spacing),
+        count: columnCount
+    )
+
+    @State private var cellSide: CGFloat = 0
 
     public init(
         items: [MediaGridModel],
@@ -24,22 +37,41 @@ public struct MediaThumbGrid: View {
     }
 
     public var body: some View {
-        LazyVGrid(columns: columns, spacing: 2) {
+        LazyVGrid(columns: columns, spacing: Self.spacing) {
             ForEach(items) { item in
                 MediaThumbCell(
                     item: item,
+                    side: cellSide,
                     thumbnail: thumbnail,
                     preview: preview,
                     onTap: { onTap(item) }
                 )
             }
         }
-        .padding(.horizontal, 2)
+        .padding(.horizontal, Self.spacing)
+        .background {
+            GeometryReader { geo in
+                Color.clear.preference(key: GridWidthKey.self, value: geo.size.width)
+            }
+        }
+        .onPreferenceChange(GridWidthKey.self) { width in
+            let gaps = Self.spacing * CGFloat(Self.columnCount - 1)
+            let insets = Self.spacing * 2
+            cellSide = max(0, (width - insets - gaps) / CGFloat(Self.columnCount))
+        }
+    }
+}
+
+private struct GridWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
 private struct MediaThumbCell: View {
     let item: MediaGridModel
+    let side: CGFloat
     let thumbnail: FlowingThumbnailProvider
     let preview: FlowingPreviewProvider
     let onTap: () -> Void
@@ -51,34 +83,29 @@ private struct MediaThumbCell: View {
     @State private var endObserver: NSObjectProtocol?
 
     var body: some View {
-        // Square cell using the GeometryReader + aspectRatio(.fit) shape — the
-        // proven pattern that composes correctly inside a scrolling LazyVGrid.
-        GeometryReader { geo in
-            let side = geo.size.width
-            ZStack {
-                Rectangle().fill(Color.primary.opacity(0.08))
+        ZStack {
+            Rectangle().fill(Color.primary.opacity(0.08))
 
-                if let image {
-                    Image(uiImage: image).resizable().scaledToFill()
-                }
-
-                if isPreviewing, let player {
-                    PlayerLayerView(player: player)
-                        .transition(.opacity)
-                }
-
-                overlays
-                    .opacity(isPreviewing ? 0 : 1)
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
             }
-            .frame(width: side, height: side)
-            .clipped()
-            .contentShape(Rectangle())
-            .task(id: item.id) { await loadThumbnail(side: side) }
-            .onTapGesture { onTap() }
-            .gesture(holdGesture)
-            .onDisappear { endHold() }
+
+            if isPreviewing, let player {
+                PlayerLayerView(player: player)
+                    .transition(.opacity)
+            }
+
+            overlays
+                .opacity(isPreviewing ? 0 : 1)
         }
-        .aspectRatio(1, contentMode: .fit)
+        .frame(maxWidth: .infinity)
+        .frame(height: side)
+        .clipped()
+        .contentShape(Rectangle())
+        .task(id: item.id) { await loadThumbnail() }
+        .onTapGesture { onTap() }
+        .gesture(holdGesture)
+        .onDisappear { endHold() }
     }
 
     private var overlays: some View {
@@ -107,9 +134,11 @@ private struct MediaThumbCell: View {
         .shadow(color: .black.opacity(0.4), radius: 3, y: 1)
     }
 
-    // Press-and-hold: begins after a short press, ends on release.
+    // Press-and-hold: begins after a short stationary press, ends on release.
+    // The long-press must complete before the drag activates, so a normal
+    // scroll drag (immediate movement) never triggers it and the ScrollView wins.
     private var holdGesture: some Gesture {
-        LongPressGesture(minimumDuration: 0.15)
+        LongPressGesture(minimumDuration: 0.2)
             .sequenced(before: DragGesture(minimumDistance: 0))
             .onChanged { value in
                 if case .second(true, _) = value { beginHold() }
@@ -117,7 +146,7 @@ private struct MediaThumbCell: View {
             .onEnded { _ in endHold() }
     }
 
-    private func loadThumbnail(side: CGFloat) async {
+    private func loadThumbnail() async {
         let dimension = max(side, 150) * 2 // retina-crisp for the cell width
         let size = CGSize(width: dimension, height: dimension)
         let loaded = await thumbnail(item.id, size)

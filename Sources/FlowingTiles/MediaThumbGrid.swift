@@ -51,33 +51,34 @@ private struct MediaThumbCell: View {
     @State private var endObserver: NSObjectProtocol?
 
     var body: some View {
-        // Square cell: Color.clear takes the column width and aspectRatio forces
-        // a 1:1 box; content is layered in an overlay and clipped to that box.
-        Color.clear
-            .aspectRatio(1, contentMode: .fit)
-            .overlay {
-                ZStack {
-                    Rectangle().fill(Color.primary.opacity(0.08))
+        // Square cell using the GeometryReader + aspectRatio(.fit) shape — the
+        // proven pattern that composes correctly inside a scrolling LazyVGrid.
+        GeometryReader { geo in
+            let side = geo.size.width
+            ZStack {
+                Rectangle().fill(Color.primary.opacity(0.08))
 
-                    if let image {
-                        Image(uiImage: image).resizable().scaledToFill()
-                    }
-
-                    if isPreviewing, let player {
-                        PlayerLayerView(player: player)
-                            .transition(.opacity)
-                    }
-
-                    overlays
-                        .opacity(isPreviewing ? 0 : 1)
+                if let image {
+                    Image(uiImage: image).resizable().scaledToFill()
                 }
+
+                if isPreviewing, let player {
+                    PlayerLayerView(player: player)
+                        .transition(.opacity)
+                }
+
+                overlays
+                    .opacity(isPreviewing ? 0 : 1)
             }
+            .frame(width: side, height: side)
             .clipped()
             .contentShape(Rectangle())
-            .task(id: item.id) { await loadThumbnail() }
+            .task(id: item.id) { await loadThumbnail(side: side) }
             .onTapGesture { onTap() }
             .gesture(holdGesture)
             .onDisappear { endHold() }
+        }
+        .aspectRatio(1, contentMode: .fit)
     }
 
     private var overlays: some View {
@@ -116,8 +117,9 @@ private struct MediaThumbCell: View {
             .onEnded { _ in endHold() }
     }
 
-    private func loadThumbnail() async {
-        let size = CGSize(width: 300, height: 300)
+    private func loadThumbnail(side: CGFloat) async {
+        let dimension = max(side, 150) * 2 // retina-crisp for the cell width
+        let size = CGSize(width: dimension, height: dimension)
         let loaded = await thumbnail(item.id, size)
         guard !Task.isCancelled else { return }
         image = loaded

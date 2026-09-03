@@ -15,6 +15,7 @@ public struct MediaThumbGrid: View {
     private let thumbnail: FlowingThumbnailProvider
     private let preview: FlowingPreviewProvider
     private let sizeProvider: FlowingSizeProvider?
+    private let zoomNamespace: Namespace.ID?
     private let onTap: (MediaGridModel) -> Void
 
     private static let spacing: CGFloat = 3
@@ -33,6 +34,7 @@ public struct MediaThumbGrid: View {
         thumbnail: @escaping FlowingThumbnailProvider,
         preview: @escaping FlowingPreviewProvider,
         sizeProvider: FlowingSizeProvider? = nil,
+        zoomNamespace: Namespace.ID? = nil,
         onTap: @escaping (MediaGridModel) -> Void
     ) {
         self.items = items
@@ -40,6 +42,7 @@ public struct MediaThumbGrid: View {
         self.thumbnail = thumbnail
         self.preview = preview
         self.sizeProvider = sizeProvider
+        self.zoomNamespace = zoomNamespace
         self.onTap = onTap
     }
 
@@ -56,6 +59,7 @@ public struct MediaThumbGrid: View {
                     onTap: { onTap(item) }
                 )
                 .accessibilityIdentifier("videoCell_\(index)")
+                .modifier(ZoomSourceModifier(id: item.id, namespace: zoomNamespace))
             }
         }
         .padding(.horizontal, Self.spacing)
@@ -76,6 +80,21 @@ private struct GridWidthKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
+    }
+}
+
+/// Marks a cell as a zoom-transition source (iOS 18+) so a pushed destination can
+/// zoom from it. No-op when no namespace is supplied or on older systems.
+private struct ZoomSourceModifier: ViewModifier {
+    let id: String
+    let namespace: Namespace.ID?
+
+    func body(content: Content) -> some View {
+        if let namespace, #available(iOS 18.0, *) {
+            content.matchedTransitionSource(id: id, in: namespace)
+        } else {
+            content
+        }
     }
 }
 

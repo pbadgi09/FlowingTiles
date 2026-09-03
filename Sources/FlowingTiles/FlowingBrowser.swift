@@ -17,6 +17,7 @@ public struct FlowingBrowser<Empty: View>: View {
     private let gridThumbnail: FlowingThumbnailProvider
     private let preview: FlowingPreviewProvider
     private let sizeProvider: FlowingSizeProvider?
+    private let zoomNamespace: Namespace.ID?
     private let onGridTap: (MediaGridModel) -> Void
     private let onSelectionChange: (String?) -> Void
     private let emptyState: () -> Empty
@@ -32,6 +33,7 @@ public struct FlowingBrowser<Empty: View>: View {
         gridThumbnail: @escaping FlowingThumbnailProvider,
         preview: @escaping FlowingPreviewProvider,
         sizeProvider: FlowingSizeProvider? = nil,
+        zoomNamespace: Namespace.ID? = nil,
         onGridTap: @escaping (MediaGridModel) -> Void,
         onSelectionChange: @escaping (String?) -> Void = { _ in },
         @ViewBuilder emptyState: @escaping () -> Empty
@@ -46,6 +48,7 @@ public struct FlowingBrowser<Empty: View>: View {
         self.gridThumbnail = gridThumbnail
         self.preview = preview
         self.sizeProvider = sizeProvider
+        self.zoomNamespace = zoomNamespace
         self.onGridTap = onGridTap
         self.onSelectionChange = onSelectionChange
         self.emptyState = emptyState
@@ -63,6 +66,7 @@ public struct FlowingBrowser<Empty: View>: View {
                         thumbnail: gridThumbnail,
                         preview: preview,
                         sizeProvider: sizeProvider,
+                        zoomNamespace: zoomNamespace,
                         onTap: onGridTap
                     )
                     .transition(.opacity)

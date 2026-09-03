@@ -54,7 +54,10 @@ public struct FlowingTileStrip: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 24)
+            // Rotated tiles overhang their frames, so they need side room at rest;
+            // as they straighten (scrollProgress → 1) that overhang disappears, so we
+            // pull the strip closer to the screen edges.
+            .padding(.horizontal, 24 - 18 * scrollProgress)
             .padding(.vertical, 28)
         }
         .frame(height: isExpanded ? 200 : 282)
@@ -119,7 +122,7 @@ struct FlowingTileView: View {
             .clipShape(RoundedRectangle(cornerRadius: 20))
 
             LinearGradient(
-                colors: [.clear, .black.opacity(0.75)],
+                colors: [.clear, .black.opacity(0.35), .black.opacity(0.9)],
                 startPoint: .center,
                 endPoint: .bottom
             )
@@ -134,6 +137,7 @@ struct FlowingTileView: View {
             Text(tile.title)
                 .font(fonts.tileLabel(size: 17))
                 .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.55), radius: 4, x: 0, y: 1)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(14)
         }

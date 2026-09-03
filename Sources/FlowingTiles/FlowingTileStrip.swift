@@ -9,6 +9,7 @@ public struct FlowingTileStrip: View {
     private let isExpanded: Bool
     private let accent: Color
     private let fonts: FlowingFonts
+    private let scrollProgress: CGFloat
     private let thumbnail: FlowingThumbnailProvider
     private let onTap: (String) -> Void
 
@@ -18,6 +19,7 @@ public struct FlowingTileStrip: View {
         isExpanded: Bool,
         accent: Color,
         fonts: FlowingFonts = .init(),
+        scrollProgress: CGFloat = 0,
         thumbnail: @escaping FlowingThumbnailProvider,
         onTap: @escaping (String) -> Void
     ) {
@@ -26,6 +28,7 @@ public struct FlowingTileStrip: View {
         self.isExpanded = isExpanded
         self.accent = accent
         self.fonts = fonts
+        self.scrollProgress = scrollProgress
         self.thumbnail = thumbnail
         self.onTap = onTap
     }
@@ -44,6 +47,7 @@ public struct FlowingTileStrip: View {
                             isExpanded: isExpanded,
                             accent: accent,
                             fonts: fonts,
+                            scrollProgress: scrollProgress,
                             thumbnail: thumbnail
                         )
                     }
@@ -55,6 +59,8 @@ public struct FlowingTileStrip: View {
         }
         .frame(height: isExpanded ? 200 : 282)
         .padding(.top, isExpanded ? -28 : -48)
+        // Whole-strip shrink as the grid scrolls under it (tiles + gaps together).
+        .scaleEffect(1 - 0.2 * scrollProgress, anchor: .top)
     }
 }
 
@@ -67,13 +73,15 @@ struct FlowingTileView: View {
     let isExpanded: Bool
     let accent: Color
     let fonts: FlowingFonts
+    let scrollProgress: CGFloat
     let thumbnail: (String, CGSize) async -> UIImage?
 
     private let angles:   [Double]  = [-8, -3,  3,  8, -5,  2, -2,  5]
     private let yOffsets: [CGFloat] = [ 12,  4, -4, 10,  6,  0,  8, -2]
 
-    private var angle:   Double  { angles[index % angles.count] }
-    private var yOffset: CGFloat { yOffsets[index % yOffsets.count] }
+    // Straighten + flatten as the grid scrolls (scrollProgress 0 → 1).
+    private var angle:   Double  { angles[index % angles.count] * (1 - scrollProgress) }
+    private var yOffset: CGFloat { yOffsets[index % yOffsets.count] * (1 - scrollProgress) }
 
     private var tileWidth:  CGFloat { isExpanded ? 108 : 152 }
     private var tileHeight: CGFloat { isExpanded ? 152 : 214 }

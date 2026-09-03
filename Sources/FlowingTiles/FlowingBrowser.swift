@@ -56,6 +56,8 @@ public struct FlowingBrowser<Empty: View>: View {
 
     private var isExpanded: Bool { selectedID != nil }
 
+    @State private var scrollProgress: CGFloat = 0
+
     public var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 32) {
@@ -76,6 +78,19 @@ public struct FlowingBrowser<Empty: View>: View {
                 }
             }
             .padding(.bottom, 40)
+            .background {
+                // Scroll probe: reports the content's top in the scroll's space so
+                // the tiles can straighten/shrink as the grid scrolls under them.
+                GeometryReader { geo in
+                    Color.clear.preference(
+                        key: ScrollOffsetKey.self,
+                        value: geo.frame(in: .named(flowingScrollSpace)).minY)
+                }
+            }
+        }
+        .coordinateSpace(name: flowingScrollSpace)
+        .onPreferenceChange(ScrollOffsetKey.self) { minY in
+            scrollProgress = min(1, max(0, -minY / flowingScrollThreshold))
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             header
@@ -86,7 +101,7 @@ public struct FlowingBrowser<Empty: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             Text(headerTitle)
                 .font(fonts.title(size: isExpanded ? 60 : 88))
-                .foregroundStyle(.primary.opacity(0.1))
+                .foregroundStyle(accent.opacity(0.1))
                 .lineLimit(2)
                 .minimumScaleFactor(0.4)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -98,6 +113,7 @@ public struct FlowingBrowser<Empty: View>: View {
                 isExpanded: isExpanded,
                 accent: accent,
                 fonts: fonts,
+                scrollProgress: scrollProgress,
                 thumbnail: tileThumbnail,
                 onTap: toggle
             )
@@ -125,5 +141,15 @@ public struct FlowingBrowser<Empty: View>: View {
             selectedID = (selectedID == id) ? nil : id
         }
         onSelectionChange(selectedID)
+    }
+}
+
+private let flowingScrollSpace = "flowingScroll"
+private let flowingScrollThreshold: CGFloat = 140
+
+private struct ScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }

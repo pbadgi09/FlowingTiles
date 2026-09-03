@@ -63,7 +63,9 @@ public struct FlowingTileStrip: View {
         .frame(height: isExpanded ? 200 : 282)
         .padding(.top, isExpanded ? -28 : -48)
         // Whole-strip shrink as the grid scrolls under it (tiles + gaps together).
-        .scaleEffect(1 - 0.2 * scrollProgress, anchor: .top)
+        // Anchored top-leading so the shrink collapses toward the left edge — keeping
+        // the first tile flush-left instead of leaving empty gutters on both sides.
+        .scaleEffect(1 - 0.2 * scrollProgress, anchor: .topLeading)
     }
 }
 

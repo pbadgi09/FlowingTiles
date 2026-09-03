@@ -18,6 +18,10 @@ public struct FlowingBrowser<Empty: View>: View {
     private let preview: FlowingPreviewProvider
     private let sizeProvider: FlowingSizeProvider?
     private let zoomNamespace: Namespace.ID?
+    private let selection: Binding<Set<String>>?
+    private let isSelecting: Bool
+    private let selectionLimit: Int?
+    private let onSelectionLimitReached: (() -> Void)?
     private let onGridTap: (MediaGridModel) -> Void
     private let onSelectionChange: (String?) -> Void
     private let emptyState: () -> Empty
@@ -34,6 +38,10 @@ public struct FlowingBrowser<Empty: View>: View {
         preview: @escaping FlowingPreviewProvider,
         sizeProvider: FlowingSizeProvider? = nil,
         zoomNamespace: Namespace.ID? = nil,
+        selection: Binding<Set<String>>? = nil,
+        isSelecting: Bool = false,
+        selectionLimit: Int? = nil,
+        onSelectionLimitReached: (() -> Void)? = nil,
         onGridTap: @escaping (MediaGridModel) -> Void,
         onSelectionChange: @escaping (String?) -> Void = { _ in },
         @ViewBuilder emptyState: @escaping () -> Empty
@@ -49,6 +57,10 @@ public struct FlowingBrowser<Empty: View>: View {
         self.preview = preview
         self.sizeProvider = sizeProvider
         self.zoomNamespace = zoomNamespace
+        self.selection = selection
+        self.isSelecting = isSelecting
+        self.selectionLimit = selectionLimit
+        self.onSelectionLimitReached = onSelectionLimitReached
         self.onGridTap = onGridTap
         self.onSelectionChange = onSelectionChange
         self.emptyState = emptyState
@@ -65,10 +77,15 @@ public struct FlowingBrowser<Empty: View>: View {
                     MediaThumbGrid(
                         items: gridItems,
                         fonts: fonts,
+                        accent: accent,
                         thumbnail: gridThumbnail,
                         preview: preview,
                         sizeProvider: sizeProvider,
                         zoomNamespace: zoomNamespace,
+                        selection: selection,
+                        isSelecting: isSelecting,
+                        selectionLimit: selectionLimit,
+                        onSelectionLimitReached: onSelectionLimitReached,
                         onTap: onGridTap
                     )
                     .transition(.opacity)

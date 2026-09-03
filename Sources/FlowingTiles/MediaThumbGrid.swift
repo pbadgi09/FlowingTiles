@@ -12,10 +12,15 @@ import AVFoundation
 public struct MediaThumbGrid: View {
     private let items: [MediaGridModel]
     private let fonts: FlowingFonts
+    private let accent: Color
     private let thumbnail: FlowingThumbnailProvider
     private let preview: FlowingPreviewProvider
     private let sizeProvider: FlowingSizeProvider?
     private let zoomNamespace: Namespace.ID?
+    private let selection: Binding<Set<String>>?
+    private let isSelecting: Bool
+    private let selectionLimit: Int?
+    private let onSelectionLimitReached: (() -> Void)?
     private let onTap: (MediaGridModel) -> Void
 
     private static let spacing: CGFloat = 3
@@ -31,19 +36,44 @@ public struct MediaThumbGrid: View {
     public init(
         items: [MediaGridModel],
         fonts: FlowingFonts = .init(),
+        accent: Color = .accentColor,
         thumbnail: @escaping FlowingThumbnailProvider,
         preview: @escaping FlowingPreviewProvider,
         sizeProvider: FlowingSizeProvider? = nil,
         zoomNamespace: Namespace.ID? = nil,
+        selection: Binding<Set<String>>? = nil,
+        isSelecting: Bool = false,
+        selectionLimit: Int? = nil,
+        onSelectionLimitReached: (() -> Void)? = nil,
         onTap: @escaping (MediaGridModel) -> Void
     ) {
         self.items = items
         self.fonts = fonts
+        self.accent = accent
         self.thumbnail = thumbnail
         self.preview = preview
         self.sizeProvider = sizeProvider
         self.zoomNamespace = zoomNamespace
+        self.selection = selection
+        self.isSelecting = isSelecting
+        self.selectionLimit = selectionLimit
+        self.onSelectionLimitReached = onSelectionLimitReached
         self.onTap = onTap
+    }
+
+    /// Toggle selection (respecting the cap) when selecting; otherwise the normal tap.
+    private func handleTap(_ item: MediaGridModel) {
+        guard isSelecting, let selection else { onTap(item); return }
+        var set = selection.wrappedValue
+        if set.contains(item.id) {
+            set.remove(item.id)
+        } else if let limit = selectionLimit, set.count >= limit {
+            onSelectionLimitReached?()
+            return
+        } else {
+            set.insert(item.id)
+        }
+        selection.wrappedValue = set
     }
 
     public var body: some View {
@@ -53,10 +83,13 @@ public struct MediaThumbGrid: View {
                     item: item,
                     side: cellSide,
                     fonts: fonts,
+                    accent: accent,
+                    isSelecting: isSelecting,
+                    isSelected: selection?.wrappedValue.contains(item.id) ?? false,
                     thumbnail: thumbnail,
                     preview: preview,
                     sizeProvider: sizeProvider,
-                    onTap: { onTap(item) }
+                    onTap: { handleTap(item) }
                 )
                 .accessibilityIdentifier("videoCell_\(index)")
                 .modifier(ZoomSourceModifier(id: item.id, namespace: zoomNamespace))
@@ -105,6 +138,9 @@ private struct MediaThumbCell: View {
     let item: MediaGridModel
     let side: CGFloat
     let fonts: FlowingFonts
+    let accent: Color
+    let isSelecting: Bool
+    let isSelected: Bool
     let thumbnail: (String, CGSize) async -> UIImage?
     let preview: @MainActor (String) async -> AVPlayer?
     let sizeProvider: ((String) async -> String?)?
@@ -142,7 +178,9 @@ private struct MediaThumbCell: View {
             sizeBadge.opacity(isPreviewing ? 0 : 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius))
+        .overlay { if isSelecting { selectionOverlay } }
         .contentShape(Rectangle())
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .task(id: item.id) {
             async let thumb: Void = loadThumbnail()
             async let size: Void = loadSize()
@@ -158,9 +196,30 @@ private struct MediaThumbCell: View {
             // Not used — the long press never "completes"; we drive start/stop
             // from the pressing state below.
         } onPressingChanged: { pressing in
+            guard !isSelecting else { return }   // no hold-to-preview while selecting
             if pressing { scheduleHold() } else { cancelHold() }
         }
         .onDisappear { cancelHold() }
+    }
+
+    /// Checkmark + accent wash shown over each cell while in selection mode.
+    private var selectionOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            if isSelected {
+                RoundedRectangle(cornerRadius: Self.cornerRadius)
+                    .fill(accent.opacity(0.28))
+                RoundedRectangle(cornerRadius: Self.cornerRadius)
+                    .strokeBorder(accent, lineWidth: 3)
+            }
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 22, weight: .bold))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(isSelected ? .black : .white,
+                                 isSelected ? accent : .white.opacity(0.7))
+                .padding(6)
+                .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
     }
 
     private var durationBadge: some View {

@@ -57,6 +57,7 @@ public struct FlowingBrowser<Empty: View>: View {
     private var isExpanded: Bool { selectedID != nil }
 
     @State private var scrollProgress: CGFloat = 0
+    @State private var scrollBaseline: CGFloat?
 
     public var body: some View {
         ScrollView(showsIndicators: false) {
@@ -90,7 +91,11 @@ public struct FlowingBrowser<Empty: View>: View {
         }
         .coordinateSpace(name: flowingScrollSpace)
         .onPreferenceChange(ScrollOffsetKey.self) { minY in
-            scrollProgress = min(1, max(0, -minY / flowingScrollThreshold))
+            // Baseline = the content's position at rest (top), captured once, so
+            // progress is exactly 0 at the top regardless of the safe-area inset.
+            let base = scrollBaseline ?? minY
+            if scrollBaseline == nil { scrollBaseline = minY }
+            scrollProgress = min(1, max(0, (base - minY) / flowingScrollThreshold))
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             header

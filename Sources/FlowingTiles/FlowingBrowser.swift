@@ -57,7 +57,6 @@ public struct FlowingBrowser<Empty: View>: View {
     private var isExpanded: Bool { selectedID != nil }
 
     @State private var scrollProgress: CGFloat = 0
-    @State private var scrollBaseline: CGFloat?
 
     public var body: some View {
         ScrollView(showsIndicators: false) {
@@ -79,24 +78,8 @@ public struct FlowingBrowser<Empty: View>: View {
                 }
             }
             .padding(.bottom, 40)
-            .background {
-                // Scroll probe: reports the content's top in the scroll's space so
-                // the tiles can straighten/shrink as the grid scrolls under them.
-                GeometryReader { geo in
-                    Color.clear.preference(
-                        key: ScrollOffsetKey.self,
-                        value: geo.frame(in: .named(flowingScrollSpace)).minY)
-                }
-            }
         }
-        .coordinateSpace(name: flowingScrollSpace)
-        .onPreferenceChange(ScrollOffsetKey.self) { minY in
-            // Baseline = the content's position at rest (top), captured once, so
-            // progress is exactly 0 at the top regardless of the safe-area inset.
-            let base = scrollBaseline ?? minY
-            if scrollBaseline == nil { scrollBaseline = minY }
-            scrollProgress = min(1, max(0, (base - minY) / flowingScrollThreshold))
-        }
+        .modifier(ScrollProgressModifier(threshold: flowingScrollThreshold, progress: $scrollProgress))
         .safeAreaInset(edge: .top, spacing: 0) {
             header
         }
@@ -149,12 +132,24 @@ public struct FlowingBrowser<Empty: View>: View {
     }
 }
 
-private let flowingScrollSpace = "flowingScroll"
 private let flowingScrollThreshold: CGFloat = 140
 
-private struct ScrollOffsetKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+/// Drives `progress` (0→1) from the ScrollView's vertical scroll offset via
+/// `onScrollGeometryChange` (the reliable iOS 18+ API); no-op on older systems.
+/// `contentOffset.y + contentInsets.top` is 0 at the top and grows as you scroll.
+private struct ScrollProgressModifier: ViewModifier {
+    let threshold: CGFloat
+    @Binding var progress: CGFloat
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollGeometryChange(for: CGFloat.self) { geo in
+                geo.contentOffset.y + geo.contentInsets.top
+            } action: { _, offset in
+                progress = min(1, max(0, offset / threshold))
+            }
+        } else {
+            content
+        }
     }
 }

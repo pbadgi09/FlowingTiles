@@ -106,7 +106,7 @@ public struct FlowingBrowser<Empty: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             Text(headerTitle)
                 .font(fonts.title(size: isExpanded ? 60 : 88))
-                .foregroundStyle(accent.opacity(0.1))
+                .foregroundStyle(accent.opacity(0.5))
                 .lineLimit(2)
                 .minimumScaleFactor(0.4)
                 .frame(maxWidth: .infinity, alignment: .leading)
